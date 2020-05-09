@@ -104,27 +104,19 @@ pub trait BVH<T, BV> {
         BFS: BestFirstVisitor<N, T, BV>,
     {
         let mut queue: BinaryHeap<WeightedValue<N, Self::Node>> = BinaryHeap::new();
+        // The lowest cost collision with actual scene geometry.
         let mut best_cost = N::max_value();
         let mut best_result = None;
 
         if let Some(root) = self.root() {
             let (root_bv, root_data) = self.content(root);
-
-            match visitor.visit(best_cost, root_bv, root_data) {
-                BestFirstVisitStatus::Continue { cost, result } => {
-                    if let Some(res) = result {
-                        best_cost = cost;
-                        best_result = Some((root, res));
-                    }
-
-                    queue.push(WeightedValue::new(root, -cost))
-                }
-                BestFirstVisitStatus::Stop => return None,
-                BestFirstVisitStatus::ExitEarly(result) => return result.map(|res| (root, res)),
-            }
+            // We don't ever care about the root's weight, so initilize it at 0.
+            queue.push(WeightedValue::new(root, N::zero()));
 
             while let Some(entry) = queue.pop() {
+                println!("Currently searching BV with cost: {}", -entry.cost);
                 if -entry.cost >= best_cost {
+                    // No BV left in the tree that has a lower cost than best_result
                     break; // Solution found.
                 }
 
@@ -135,12 +127,15 @@ pub trait BVH<T, BV> {
                     match visitor.visit(best_cost, child_bv, child_data) {
                         BestFirstVisitStatus::Continue { cost, result } => {
                             if cost < best_cost {
+                                // result is_some iff child is a leaf node
                                 if result.is_some() {
+                                    // This is the nearest collision so far
                                     best_cost = cost;
                                     best_result = result.map(|res| (child, res));
+                                } else {
+                                    // BV may have a child with lower cost, evaluate it next.
+                                    queue.push(WeightedValue::new(child, -cost))
                                 }
-
-                                queue.push(WeightedValue::new(child, -cost))
                             }
                         }
                         BestFirstVisitStatus::ExitEarly(result) => {
